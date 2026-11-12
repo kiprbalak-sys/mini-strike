@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#101820">
+<title>Mini Strike Mobile</title>
+<style>
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#101820;color:#fff;font-family:Arial,sans-serif;touch-action:none}
+#view{position:fixed;inset:0;width:100%;height:100%}
+#menu{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:18px;background:linear-gradient(145deg,#111c27,#2b4655)}
+.panel{width:min(430px,100%);padding:24px 20px;border-radius:20px;background:#08121eee;border:1px solid #ffffff35;text-align:center}
+h1{margin:0;color:#67e8f9;font-size:34px;letter-spacing:2px}p{color:#cbd5e1;font-size:14px;line-height:1.4}
+button,select{width:100%;padding:14px;margin:7px 0;border:0;border-radius:12px;font-size:16px;font-weight:bold;background:#67e8f9;color:#06131b}
+.secondary{background:#344b5e;color:#fff}#settings{display:none}
+#hud{position:fixed;top:env(safe-area-inset-top,8px);left:8px;right:8px;display:none;justify-content:space-between;pointer-events:none;font-weight:bold}
+.badge{background:#06111ddd;padding:8px 10px;border-radius:10px;font-size:13px}
+#cross{position:fixed;display:none;left:50%;top:50%;width:20px;height:20px;transform:translate(-50%,-50%);pointer-events:none}
+#cross:before,#cross:after{content:"";position:absolute;background:white;box-shadow:0 0 4px #000}
+#cross:before{width:2px;height:20px;left:9px}#cross:after{height:2px;width:20px;top:9px}
+#controls{position:fixed;inset:0;display:none;pointer-events:none}
+#pad{position:absolute;left:16px;bottom:calc(20px + env(safe-area-inset-bottom));width:126px;height:126px;border-radius:50%;background:#ffffff28;border:2px solid #ffffff66;pointer-events:auto;touch-action:none}
+#nub{position:absolute;left:35px;top:35px;width:52px;height:52px;border-radius:50%;background:#67e8f9bb;border:2px solid white}
+#shoot{position:absolute;right:20px;bottom:calc(30px + env(safe-area-inset-bottom));width:82px;height:82px;border-radius:50%;background:#f97316;color:white;pointer-events:auto;touch-action:none}
+#pause{position:absolute;right:8px;top:54px;width:auto;padding:9px 13px;background:#344b5ecc;color:white;pointer-events:auto}
+#hint{position:absolute;right:16px;top:44%;font-size:11px;color:#ffffffaa;text-align:center}
+#toast{position:fixed;left:50%;top:20%;transform:translateX(-50%);padding:10px 15px;border-radius:10px;background:#06111ddd;display:none;white-space:nowrap}
+</style></head>
+<body>
+<canvas id="view"></canvas>
+<div id="menu"><div class="panel">
+<h1>MINI STRIKE</h1><p>Мобільна 3D-аркада з ботами. Поверни телефон горизонтально для зручної гри.</p>
+<div id="main"><button id="play">ГРАТИ</button><button class="secondary" id="settingsBtn">НАЛАШТУВАННЯ</button><button class="secondary" id="exit">ВИХІД</button></div>
+<div id="settings"><p>ОБЕРИ СКІН</p><select id="skin"><option value="#2788df">Синій оперативник</option><option value="#d94343">Червоний оперативник</option><option value="#239b63">Зелений оперативник</option><option value="#d2a52d">Золотий оперативник</option></select><p>КІЛЬКІСТЬ БОТІВ</p><select id="count"><option>3</option><option selected>5</option><option>7</option></select><button id="save">ЗБЕРЕГТИ</button><button class="secondary" id="back">НАЗАД</button></div>
+<p style="font-size:11px">Не потребує додаткових бібліотек чи інтернету під час гри.</p>
+</div></div>
+<div id="hud"><span class="badge" id="hp">❤️ 100</span><span class="badge" id="pts">⭐ 0</span><span class="badge" id="left">🤖 5</span></div>
+<div id="cross"></div><div id="toast"></div>
+<div id="controls"><div id="pad"><div id="nub"></div></div><button id="shoot">ВОГОНЬ</button><button id="pause">Ⅱ</button><div id="hint">Веди пальцем<br>для огляду</div></div>
+<script>
+(()=>{
+const canvas=document.getElementById('view'),c=canvas.getContext('2d');const $=id=>document.getElementById(id);
+let w=0,h=0,dpr=1,active=false,paused=false,px=8,py=10.5,angle=-Math.PI/2,score=0,health=100,skin='#2788df',bots=[],moveX=0,moveY=0,lookId=null,lastX=0,lastY=0,lastTime=0;
+const map=['1111111111111111','1000000000000001','1000100001000001','1000100001000001','1000000000000001','1000011001100001','1000010000100001','1000000000000001','1000100001000001','1000100001000001','1000000000000001','1000000000000001','1111111111111111'];
+const mw=16,mh=13,FOV=Math.PI/3;
+function resize(){dpr=Math.min(devicePixelRatio||1,1.5);w=innerWidth;h=innerHeight;canvas.width=w*dpr;canvas.height=h*dpr;canvas.style.width=w+'px';canvas.style.height=h+'px';c.setTransform(dpr,0,0,dpr,0,0)}addEventListener('resize',resize);resize();
+function wall(x,y){let ix=Math.floor(x),iy=Math.floor(y);return iy<0||iy>=mh||ix<0||ix>=mw||map[iy][ix]==='1'}
+function say(t){$('toast').textContent=t;$('toast').style.display='block';setTimeout(()=>$('toast').style.display='none',950)}
+function updateBots(){$('left').textContent='🤖 '+bots.filter(b=>b.alive).length}
+function showMenu(){active=false;$('menu').style.display='flex';$('hud').style.display='none';$('controls').style.display='none';$('cross').style.display='none';$('main').style.display='block';$('settings').style.display='none'}
+function start(){px=8;py=10.5;angle=-Math.PI/2;score=0;health=100;skin=$('skin').value;let n=+$('count').value;let spots=[[3.5,2.5],[12.5,2.5],[3.5,10.5],[12.5,10.5],[8,2.2],[8,11.3],[2.5,6.5]];bots=spots.slice(0,n).map((s,i)=>({x:s[0],y:s[1],alive:true,phase:Math.random()*6,color:i%2?'#d64a42':'#334d69'}));$('hp').textContent='❤️ 100';$('pts').textContent='⭐ 0';updateBots();$('menu').style.display='none';$('hud').style.display='flex';$('controls').style.display='block';$('cross').style.display='block';active=true;paused=false;lastTime=performance.now();requestAnimationFrame(loop)}
+function ray(a){let cs=Math.cos(a),sn=Math.sin(a);for(let d=.025;d<20;d+=.025){if(wall(px+cs*d,py+sn*d))return d}return 20}
+function render(){
+let horizon=h*.48;c.fillStyle='#8cb9ca';c.fillRect(0,0,w,horizon);c.fillStyle='#46534d';c.fillRect(0,horizon,w,h-horizon);
+let cols=Math.max(100,Math.floor(w/3)),strip=w/cols,depths=[];
+for(let i=0;i<cols;i++){let a=angle-FOV/2+(i/cols)*FOV,d=ray(a)*Math.cos(a-angle);depths[i]=d;let shade=Math.max(45,190-d*7);c.fillStyle=`rgb(${shade*.72},${shade*.78},${shade*.82})`;let wallH=Math.min(h*2,h*.9/(d+.12));c.fillRect(i*strip,horizon-wallH/2,strip+1,wallH);c.fillStyle='rgba(0,0,0,.12)';c.fillRect(i*strip,horizon-wallH/2,strip+1,wallH)}
+let visible=bots.filter(b=>b.alive).map(b=>{let dx=b.x-px,dy=b.y-py,dist=Math.hypot(dx,dy),a=Math.atan2(dy,dx)-angle;while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;return {...b,dist,a}}).filter(b=>Math.abs(b.a)<FOV*.65).sort((a,b)=>b.dist-a.dist);
+visible.forEach(b=>{let sx=(.5+b.a/FOV)*w,idx=Math.max(0,Math.min(cols-1,Math.floor(sx/strip)));if(b.dist>depths[idx]+.3)return;let size=Math.min(h*.65,h/(b.dist*.85)),bw=size*.38,bh=size*.75,base=horizon+size*.34;c.fillStyle='rgba(0,0,0,.25)';c.beginPath();c.ellipse(sx,base+2,bw*.65,6,0,0,Math.PI*2);c.fill();c.fillStyle=b.color;c.fillRect(sx-bw/2,base-bh*.62,bw,bh*.55);c.fillStyle='#c99e7b';c.beginPath();c.arc(sx,base-bh*.72,bw*.28,0,Math.PI*2);c.fill();c.fillStyle='#1d2730';c.fillRect(sx-bw*.42,base-bh*.1,bw*.3,bh*.28);c.fillRect(sx+bw*.12,base-bh*.1,bw*.3,bh*.28)});
+c.fillStyle=skin;c.fillRect(w*.42,h-35,w*.16,35);c.fillStyle='#18232c';c.fillRect(w*.46,h-54,w*.08,30);
+}
+function loop(t){if(!active)return;let dt=Math.min((t-lastTime)/1000,.05);lastTime=t;if(!paused){let nx=px+(-Math.sin(angle)*(-moveY)+Math.cos(angle)*moveX)*dt*2.6,ny=py+(-Math.cos(angle)*(-moveY)-Math.sin(angle)*moveX)*dt*2.6;if(!wall(nx,py))px=nx;if(!wall(px,ny))py=ny;bots.forEach(b=>{if(!b.alive)return;b.phase+=dt;b.x+=Math.sin(b.phase)*dt*.18;b.y+=Math.cos(b.phase*.7)*dt*.13});render()}requestAnimationFrame(loop)}
+function shoot(){if(!active||paused)return;let target=null,best=.12;bots.forEach(b=>{if(!b.alive)return;let a=Math.atan2(b.y-py,b.x-px)-angle;while(a>Math.PI)a-=Math.PI*2;while(a<-Math.PI)a+=Math.PI*2;let d=Math.hypot(b.x-px,b.y-py);if(Math.abs(a)<best&&d<13&&ray(angle+a) > d-.5){best=Math.abs(a);target=b}});if(target){target.alive=false;score+=100;$('pts').textContent='⭐ '+score;updateBots();say('+100 очок!')}else say('Мимо!')}
+$('play').onclick=start;$('settingsBtn').onclick=()=>{$('main').style.display='none';$('settings').style.display='block'};$('back').onclick=()=>{$('settings').style.display='none';$('main').style.display='block'};$('save').onclick=()=>{$('settings').style.display='none';$('main').style.display='block';say('Налаштування збережено')};$('exit').onclick=()=>say('Щоб вийти, закрий вкладку Safari');
+$('pause').onclick=()=>{paused=!paused;if(paused){say('ПАУЗА');setTimeout(()=>{if(paused)showMenu()},1200)}else say('ГРУ ПРОДОВЖЕНО')};
+let pad=$('pad'),nub=$('nub'),padId=null,cx=0,cy=0;
+pad.addEventListener('pointerdown',e=>{padId=e.pointerId;pad.setPointerCapture(padId);let r=pad.getBoundingClientRect();cx=r.left+r.width/2;cy=r.top+r.height/2;padMove(e)});pad.addEventListener('pointermove',e=>{if(e.pointerId===padId)padMove(e)});
+function padMove(e){let dx=e.clientX-cx,dy=e.clientY-cy,l=Math.hypot(dx,dy),m=38;if(l>m){dx=dx/l*m;dy=dy/l*m}moveX=dx/m;moveY=dy/m;nub.style.transform=`translate(${dx}px,${dy}px)`}
+function padEnd(e){if(e.pointerId===padId){padId=null;moveX=moveY=0;nub.style.transform='translate(0,0)'}}pad.addEventListener('pointerup',padEnd);pad.addEventListener('pointercancel',padEnd);
+canvas.addEventListener('pointerdown',e=>{lookId=e.pointerId;lastX=e.clientX;lastY=e.clientY});canvas.addEventListener('pointermove',e=>{if(e.pointerId!==lookId||!active)return;let dx=e.clientX-lastX;angle+=dx*.008;lastX=e.clientX;lastY=e.clientY});canvas.addEventListener('pointerup',e=>{if(e.pointerId===lookId)lookId=null});canvas.addEventListener('pointercancel',e=>{if(e.pointerId===lookId)lookId=null});
+$('shoot').addEventListener('pointerdown',e=>{e.preventDefault();shoot()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&active)paused=true});
+})();
+</script></body></html>
